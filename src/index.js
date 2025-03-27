@@ -1,42 +1,76 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
-const path = require('node:path');
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
+const log = require('cle');
+const path = require('path');
+
 if (require('electron-squirrel-startup')) {
   app.quit();
 }
 
+let mainWindow;
+
 const createWindow = () => {
-  // Create the browser window.
-  const mainWindow = new BrowserWindow({
-    // fullscreen:true,
-    width:800,
-    height:800,
+  mainWindow = new BrowserWindow({
+    width: 800,
+    height: 600,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
 
-  // Load external URL
-  // mainWindow.loadURL('https://kiosk.shatayu.online'); // Replace with your desired URL
-  mainWindow.loadURL('https://reactnative.dev')
-  // Open the DevTools.
-  autoUpdater.checkForUpdatesAndNotify();
+  mainWindow.loadURL('https://www.electronforge.io'); // Replace with your URL
+  // mainWindow.loadURL('https://kiosk.shatayu.online'); // Replace with your URL
 
+  // Check for updates
+  autoUpdater.checkForUpdates();
 };
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
   createWindow();
 
-  autoUpdater.on('update-downloaded', () => {
-    autoUpdater.quitAndInstall();
+  autoUpdater.on('update-available', (info) => {
+    log.info(`Update available: ${info.version}`);
+
+    // Show a confirmation dialog
+    const userResponse = dialog.showMessageBoxSync(mainWindow, {
+      type: 'info',
+      buttons: ['Update Now', 'Later'],
+      defaultId: 0,
+      title: 'Update Available',
+      message: `A new update (v${info.version}) is available. Do you want to update now?`,
+    });
+
+    if (userResponse === 0) {
+      // User clicked "Update Now"
+      autoUpdater.downloadUpdate();
+    }
   });
 
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
+  autoUpdater.on('update-not-available', () => {
+    log.info("No update available");
+  });
+
+  autoUpdater.on('error', (err) => {
+    log.error(`Update error: ${err}`);
+  });
+
+  autoUpdater.on('update-downloaded', () => {
+    log.info("Update downloaded. Prompting user to install...");
+
+    // Ask user to install the update
+    const installResponse = dialog.showMessageBoxSync(mainWindow, {
+      type: 'question',
+      buttons: ['Restart Now', 'Later'],
+      defaultId: 0,
+      title: 'Update Ready',
+      message: 'The update has been downloaded. Restart the app to apply the update?',
+    });
+
+    if (installResponse === 0) {
+      autoUpdater.quitAndInstall();
+    }
+  });
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -44,14 +78,8 @@ app.whenReady().then(() => {
   });
 });
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and import them here.
