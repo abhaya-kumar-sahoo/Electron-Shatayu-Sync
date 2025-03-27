@@ -1,6 +1,6 @@
-const { app, BrowserWindow, autoUpdater } = require('electron');
+const { app, BrowserWindow } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('node:path');
-
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
   app.quit();
@@ -9,16 +9,17 @@ if (require('electron-squirrel-startup')) {
 const createWindow = () => {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    // fullscreen:true,
+    width:800,
+    height:800,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
 
   // Load external URL
-  mainWindow.loadURL('https://kiosk.shatayu.online'); // Replace with your desired URL
-
+  // mainWindow.loadURL('https://kiosk.shatayu.online'); // Replace with your desired URL
+  mainWindow.loadURL('https://reactnative.dev')
   // Open the DevTools.
   autoUpdater.checkForUpdatesAndNotify();
 
