@@ -1,11 +1,16 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow } = require('electron');
 const { autoUpdater } = require('electron-updater');
-const log = require('cle');
-const path = require('path');
+const path = require('node:path');
+const log = require('electron-log');
 
-if (require('electron-squirrel-startup')) {
-  app.quit();
-}
+// Initialize log and set custom log file location
+log.initialize();
+const logPath = path.join(
+  'C:\\Users\\ASUS\\Desktop\\sync-software\\Shatayu\\Electron-Shatayu-Sync',
+  'app.log'
+);
+log.transports.file.resolvePathFn = () => logPath;
+log.transports.file.level = 'info'; // Ensure log level allows writing
 
 let mainWindow;
 
@@ -15,71 +20,62 @@ const createWindow = () => {
     height: 600,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
     },
   });
 
-  mainWindow.loadURL('https://www.electronforge.io'); // Replace with your URL
-  // mainWindow.loadURL('https://kiosk.shatayu.online'); // Replace with your URL
-
-  // Check for updates
-  autoUpdater.checkForUpdates();
+  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  log.info('Main window created and index.html loaded.');
 };
 
 app.whenReady().then(() => {
   createWindow();
+  log.info('App is ready. Checking for updates...');
 
-  autoUpdater.on('update-available', (info) => {
-    log.info(`Update available: ${info.version}`);
+  // Automatically check for updates and notify user
+  autoUpdater.checkForUpdatesAndNotify();
+  log.info('Called autoUpdater.checkForUpdatesAndNotify().');
 
-    // Show a confirmation dialog
-    const userResponse = dialog.showMessageBoxSync(mainWindow, {
-      type: 'info',
-      buttons: ['Update Now', 'Later'],
-      defaultId: 0,
-      title: 'Update Available',
-      message: `A new update (v${info.version}) is available. Do you want to update now?`,
-    });
+  // Listen for update events and write logs at each step
 
-    if (userResponse === 0) {
-      // User clicked "Update Now"
-      autoUpdater.downloadUpdate();
-    }
+  autoUpdater.on('checking-for-update', () => {
+    log.info('Checking for update...');
+    console.log('Checking for update...');
   });
 
-  autoUpdater.on('update-not-available', () => {
-    log.info("No update available");
+  autoUpdater.on('update-available', (info) => {
+    log.info('Update available.', info);
+    console.log('Update available.');
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    log.info('Update not available.', info);
+    console.log('Update not available.');
   });
 
   autoUpdater.on('error', (err) => {
-    log.error(`Update error: ${err}`);
+    log.error('Error in auto-updater:', err);
+    console.error('Error in auto-updater. ' + err);
   });
 
-  autoUpdater.on('update-downloaded', () => {
-    log.info("Update downloaded. Prompting user to install...");
-
-    // Ask user to install the update
-    const installResponse = dialog.showMessageBoxSync(mainWindow, {
-      type: 'question',
-      buttons: ['Restart Now', 'Later'],
-      defaultId: 0,
-      title: 'Update Ready',
-      message: 'The update has been downloaded. Restart the app to apply the update?',
-    });
-
-    if (installResponse === 0) {
-      autoUpdater.quitAndInstall();
-    }
+  autoUpdater.on('download-progress', (progressObj) => {
+    let logMessage = `Download speed: ${progressObj.bytesPerSecond} B/s - Downloaded ${progressObj.percent.toFixed(2)}%`;
+    log.info(logMessage, progressObj);
+    console.log(logMessage);
   });
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
+  autoUpdater.on('update-downloaded', (info) => {
+    log.info('Update downloaded; will install now.', info);
+    console.log('Update downloaded; will install now');
+    autoUpdater.quitAndInstall();
   });
 });
 
 app.on('window-all-closed', () => {
+  // On Windows and Linux, quit when all windows are closed.
   if (process.platform !== 'darwin') {
+    log.info('All windows closed, quitting app...');
     app.quit();
   }
 });
