@@ -1,79 +1,132 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('node:path');
 const log = require('electron-log');
+const { setuplocalFileWatcher } = require("./config/config");
 
-// Initialize log and set custom log file location
 log.initialize();
 const logPath = path.join(
-  'C:\\Users\\ASUS\\Desktop\\sync-software\\Shatayu\\Electron-Shatayu-Sync',
+  "D:\\Sync\\Log",
   'app.log'
 );
 log.transports.file.resolvePathFn = () => logPath;
-log.transports.file.level = 'info'; // Ensure log level allows writing
+log.transports.file.level = 'info';
 
 let mainWindow;
+let loaderWindow;
+let updateWindow;
 
-const createWindow = () => {
-  mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+const createLoaderWindow = () => {
+  loaderWindow = new BrowserWindow({
+    width: 300,
+    height: 200,
+    frame: false,
+    alwaysOnTop: true,
+    transparent: true,
+    resizable: false,
+    show: false,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+    },
+  });
+
+  loaderWindow.loadFile(path.join(__dirname, "loader.html"));
+
+  loaderWindow.once('ready-to-show', () => {
+    loaderWindow.show();
+  });
+};
+
+const createMainWindow = () => {
+  mainWindow = new BrowserWindow({
+    width:1280,
+    height:800,
+    webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
 
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
-  log.info('Main window created and index.html loaded.');
+  mainWindow.loadURL('https://kiosk.shatayu.online');
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (loaderWindow) {
+      loaderWindow.close();
+      mainWindow.maximize(); // Maximizes the window when opened
+
+    }
+    log.info('Main window loaded successfully.');
+
+    // Check for updates after the main window is loaded
+    autoUpdater.checkForUpdates();
+  });
+
+  setuplocalFileWatcher();
+};
+
+// Function to create an update modal
+const createUpdateWindow = () => {
+  updateWindow = new BrowserWindow({
+    width: 400,
+    height: 300,
+    title: "Update Available",
+    resizable: false,
+    modal: false,
+    parent: mainWindow,
+    show: false,
+    webPreferences: {
+      nodeIntegration: true,
+      preload: path.join(__dirname, 'preload.js'), // Load the preload script
+
+    },
+  });
+  updateWindow.setMenu(null); // Remove default menu (File, Edit, etc.)
+
+
+  updateWindow.loadFile(path.join(__dirname, "update-modal.html"));
+
+  updateWindow.once('ready-to-show', () => {
+    updateWindow.show();
+  });
 };
 
 app.whenReady().then(() => {
-  createWindow();
+  createLoaderWindow();
+  createMainWindow();
+  // createUpdateWindow()
   log.info('App is ready. Checking for updates...');
-
-  // Automatically check for updates and notify user
   autoUpdater.checkForUpdatesAndNotify();
-  log.info('Called autoUpdater.checkForUpdatesAndNotify().');
 
-  // Listen for update events and write logs at each step
-
-  autoUpdater.on('checking-for-update', () => {
-    log.info('Checking for update...');
-    console.log('Checking for update...');
-  });
-
-  autoUpdater.on('update-available', (info) => {
-    log.info('Update available.', info);
-    console.log('Update available.');
-  });
-
-  autoUpdater.on('update-not-available', (info) => {
-    log.info('Update not available.', info);
-    console.log('Update not available.');
-  });
-
-  autoUpdater.on('error', (err) => {
-    log.error('Error in auto-updater:', err);
-    console.error('Error in auto-updater. ' + err);
+  autoUpdater.on('update-available', () => {
+    log.info('Update available. Showing update modal.');
+    createUpdateWindow();
   });
 
   autoUpdater.on('download-progress', (progressObj) => {
-    let logMessage = `Download speed: ${progressObj.bytesPerSecond} B/s - Downloaded ${progressObj.percent.toFixed(2)}%`;
-    log.info(logMessage, progressObj);
-    console.log(logMessage);
+    let progress = progressObj.percent.toFixed(2);
+    log.info(`Download progress: ${progress}%`);
+    if (updateWindow) {
+      updateWindow.webContents.send('download-progress', progress);
+    }
   });
 
-  autoUpdater.on('update-downloaded', (info) => {
-    log.info('Update downloaded; will install now.', info);
-    console.log('Update downloaded; will install now');
+  autoUpdater.on('update-downloaded', () => {
+    log.info('Update downloaded. Enabling Quit & Relaunch button.');
+    if (updateWindow) {
+      updateWindow.webContents.send('update-downloaded');
+    }
+  });
+
+  ipcMain.on('quit-and-install', () => {
+    console.log("quiting ...");
+    
     autoUpdater.quitAndInstall();
   });
 });
 
+ipcMain.handle('get-version', () => app.getVersion());
+
 app.on('window-all-closed', () => {
-  // On Windows and Linux, quit when all windows are closed.
   if (process.platform !== 'darwin') {
     log.info('All windows closed, quitting app...');
     app.quit();
