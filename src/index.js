@@ -4,6 +4,7 @@ const path = require('node:path');
 const log = require('electron-log');
 const { setuplocalFileWatcher } = require("./config/config");
 
+// Load environment variables
 log.initialize();
 const logPath = path.join(
   "D:\\Sync\\Log",
